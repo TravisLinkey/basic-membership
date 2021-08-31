@@ -1,15 +1,16 @@
 "reach 0.1";
 "use strict";
 
+const ROSTERSIZE = 10;
+
 const CommonInterface = {
-  // show the address of the winner
+  // show the membership roster
   showOutcome: Fun([Address], Null),
-  didTransfer: Fun([Bool, UInt], Null),
 };
 
 const AliceInterface = {
   ...CommonInterface,
-  payUser: Fun([Address], Null),
+  roster: Array(Address, ROSTERSIZE),
   getParams: Fun([], Object({
     deadline: UInt,
     signupFee: UInt,
@@ -25,9 +26,8 @@ const AliceInterface = {
 const BobInterface = {
   ...CommonInterface,
   addToRoster: Fun([Address], Null),
-  returnAmount: Fun([Address], UInt),
-  isMember: Fun([Address], Bool),
-  shouldGetMembership: Fun([Address, UInt], Bool),
+  returnAmount: Fun([], UInt),
+  shouldGetMembership: Fun([UInt], Bool),
 };
 
 export const main = Reach.App(
@@ -39,18 +39,17 @@ export const main = Reach.App(
   (Alice, Bob) => {
 
     // Helper to display results to everyone
-    const showOutcome = (who) =>
+    const showOutcome = () =>
       each([Alice, Bob], () => {
-        interact.showOutcome(who);
+        const me = this;
+        interact.showOutcome(me);
       });
 
     // 0. Mint new token
     Alice.only(() => {
       const { name, symbol, url, metadata, supply } = declassify(interact.getTokenParams());
-      assume(supply == 1000);
     });
     Alice.publish(name, symbol, url, metadata, supply);
-    require(supply == 1000);
 
     const md1 = {name, symbol, url, metadata, supply};
     const tok1 = new Token(md1);
@@ -65,20 +64,21 @@ export const main = Reach.App(
 
     // 2. Until timeout, allow Bobs to purchase membership
     const [keepGoing, funder, totalSignedUp] = parallelReduce([ true, Alice, 0 ])
-      .invariant(balance() == totalSignedUp * signupFee)
-      .while(keepGoing)
+      .invariant(balance() == totalSignedUp * signupFee && !tok1.destroyed())
+      .while(keepGoing && totalSignedUp < ROSTERSIZE)
       .case(Bob,
         (() => ({
-           when: balance(tok1) > 0 && declassify(interact.shouldGetMembership(Bob, signupFee)),
+           when: balance(tok1) > 0 && declassify(interact.shouldGetMembership(signupFee)),
         })),
         ((_) => signupFee),
         ((_) => {
-          // check: no more tokens
           const buyer = this;
+
+          // check: no more tokens
+          require(balance(tok1) > 0);
           Bob.only(() => {
             interact.addToRoster(buyer);
           });
-          require(balance(tok1) > 0);
           transfer(1, tok1).to(buyer);
           return [ true, funder, totalSignedUp+1 ];
         }))
@@ -88,16 +88,16 @@ export const main = Reach.App(
        });
 
       // 3. Transfer the balance to the funder of the contract
-      showOutcome(Alice);
+      showOutcome();
       transfer(balance()).to(funder);
        
       //  4. Loop to return Bob's tokens
       var [] = [];
-      invariant(balance() == 0);
+      invariant(balance() == 0 && !tok1.destroyed());
       while (balance(tok1) !=  tok1.supply()) {
         commit();
         Bob.only(() => {
-          const userTokens = declassify(interact.returnAmount(this));
+          const userTokens = declassify(interact.returnAmount());
         })
         Bob.publish(userTokens).pay([[userTokens, tok1]]);
         continue;

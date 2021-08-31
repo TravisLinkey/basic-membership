@@ -24,7 +24,7 @@ const numOfBobs = 10;
   const ctcInfo = ctcAlice.getInfo();
   const contractParams = {
     signupFee : stdlib.parseCurrency(5),
-    deadline: 50,
+    deadline: 150,
   };
 
   const tokenParams = {
@@ -43,7 +43,8 @@ const numOfBobs = 10;
   const fmt = (x) => stdlib.formatCurrency(x, 4);
   const showBalance = async () => {
     console.log(`${me}: Checking ${tok} balance:`);
-    console.log(`${me}: ${tok} balance: ${fmt(await stdlib.balanceOf(acc, tok))}`);
+    const tokenBalance = fmt(await stdlib.balanceOf(acc, tok));
+    console.log(`${me}: ${tok} balance: ${tokenBalance}`);
   };
 
   // initial 'empty' array
@@ -60,13 +61,6 @@ const numOfBobs = 10;
       getParams: () => contractParams,
       getTokenParams: () => tokenParams,
       roster: currentRoster,
-      didTransfer: async (did, _amt) => {
-        if ( did ) {
-          amt = _amt;
-          console.log(`${me}: Received transfer of ${fmt(amt)} for ${tok}`);
-        }
-        await showBalance();
-      },
       showToken: async (_tok, cmd) => {
         tok = _tok;
         acc = accAlice;
@@ -86,22 +80,29 @@ const numOfBobs = 10;
     }),
   ].concat(accBobArray.map((accBob, i) => {
     const ctcBob = accBob.attach(backend, ctcInfo);
+    let isMember = false;
     return backend.Bob(ctcBob, {
       showOutcome: (addr) => {
         let isMember = currentRoster.includes(addr) ? 'a member' : 'Not a Member';
         console.log(`Address: ${addr} sees that they are ${isMember}`);
       },
-      didTransfer: async (did, _amt) => {
+      didTransfer: (did, _amt) => {
         if ( did ) {
           amt = _amt;
-          console.log(`${me}: Received transfer of ${fmt(amt)} for ${tok}`);
+          console.log(`${accBob.getAddress()}: Received transfer of ${fmt(amt)} for ${tok}`);
         }
-        await showBalance();
       },
-      returnAmount: async (addr) => await stdlib.balanceOf(addr, tok),
-      isMember: (addr) => currentRoster.includes(addr),
-      shouldGetMembership: (addr, membershipFee) => !currentRoster.includes(addr) && Math.random() < 0.7,
+      returnAmount: async () => {
+        const tokenBalance = await stdlib.balanceOf(accBob, tok);
+        console.log(`${accBob.getAddress()} will return: ${tokenBalance}`)
+        return tokenBalance;
+      },
+      shouldGetMembership: (membershipFee) => {
+        if (isMember) { return false; }
+        return Math.random() < 0.7;
+      },
       addToRoster: (addr) => {
+
         // user already on roster
         if (currentRoster.includes(addr)) {
           console.log(`User already on the roster`)
@@ -113,21 +114,9 @@ const numOfBobs = 10;
           const funderIndex = currentRoster.indexOf(funderAddress);
           currentRoster = currentRoster.map((elem, i) => i == funderIndex ? accBob.getAddress() : elem);
         }
+        isMember = true;
       },
     })
   }))
   );
-
-  // 4. Print the final balances for the consensus
-  for(const [who, acc] of ([['Alice', accAlice]].concat(currentRoster.map((accBob) => ['Bob', accBob])))) {
-
-    if (who === 'Alice') {
-      console.log(`${who} has a balance of ${await getBalance(acc)}`);
-    }
-    else {
-      // console.log(`${acc} has a balance of ${await stdlib.balanceOf(acc)}`);
-      console.log(`${acc} has a balance of ${typeof acc}`);
-    }
-  }
-  console.log(`\n`);
 })();
