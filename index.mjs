@@ -48,7 +48,7 @@ const numOfBobs = 10;
 
   // initial 'empty' array
   const funderAddress = accAlice.getAddress();
-  let currentRoster = Array.from({length: numOfBobs}, () => funderAddress) 
+  let currentRoster = Array.from({length: numOfBobs}, () => funderAddress)
 
   // 3. Declare interact interfaces
   await Promise.all([
@@ -56,10 +56,6 @@ const numOfBobs = 10;
       showOutcome: (addr) => {
         console.log(`Funder: sees the current roster`);
         console.log(`Alice shows current roster: ${currentRoster}`);
-      },
-      getRoster: () => {
-        console.log(`Alice shows current roster: ${currentRoster}`);
-        return currentRoster
       },
       getParams: () => contractParams,
       getTokenParams: () => tokenParams,
@@ -95,6 +91,14 @@ const numOfBobs = 10;
         let isMember = currentRoster.includes(addr) ? 'a member' : 'Not a Member';
         console.log(`Address: ${addr} sees that they are ${isMember}`);
       },
+      didTransfer: async (did, _amt) => {
+        if ( did ) {
+          amt = _amt;
+          console.log(`${me}: Received transfer of ${fmt(amt)} for ${tok}`);
+        }
+        await showBalance();
+      },
+      returnAmount: async (addr) => await stdlib.balanceOf(addr, tok),
       isMember: (addr) => currentRoster.includes(addr),
       shouldGetMembership: (addr, membershipFee) => !currentRoster.includes(addr) && Math.random() < 0.7,
       addToRoster: (addr) => {
@@ -109,7 +113,7 @@ const numOfBobs = 10;
           const funderIndex = currentRoster.indexOf(funderAddress);
           currentRoster = currentRoster.map((elem, i) => i == funderIndex ? accBob.getAddress() : elem);
         }
-      }
+      },
     })
   }))
   );
